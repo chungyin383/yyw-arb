@@ -50,18 +50,19 @@ function start_bfx(){
 
 		ws.send(JSON.stringify(payload));
 		
-		// subscribe
-		ws.send(JSON.stringify({
-		   "event":"subscribe",
-		   "channel":"ticker",
-		   "pair":"YYWBTC"
-		}));
+		timeoutObj = setInterval(function(){
+			if (!isAlive){
+				console.log(getDateTime() + ' [Bitfinex] No heartbeat');
+				reconnect_bfx();
+			}
+			isAlive = false;
+		}, 10000);
 		
 	}
 	
     ws.on('message', function(msg) {
 		obj = JSON.parse(msg);
-		if (typeof obj.event !== 'undefined'){
+		if (Object.prototype.toString.call( obj ) === '[object Object]'){
 			switch(obj.event) {
 				case "info": 
 					if (typeof obj.version !== 'undefined'){
@@ -74,54 +75,70 @@ function start_bfx(){
 					console.log(getDateTime() + ' [Bitfinex] subscribed to YYW tickers');
 					break;
 				case "pong": 
+					console.log('pong');
 					isAlive = true;
 					break;
 				case 'error':
 					console.log(getDateTime() + ' [Bitfinex] ERROR: ' + obj.code + ' ' + obj.obj);
 					shit = true;
-					reconnect_bf();
+					reconnect_bfx();
 					break;
+				default:
+					console.log(obj);
 			}
-		} else if (typeof obj[0] === 'number' && obj.length == 11){
-			console.log(obj);
-			// return ticker!
-			data.bfx.bid.p = obj[1];
-			data.bfx.bid.q = obj[2];
-			data.bfx.ask.p = obj[3];
-			data.bfx.ask.q = obj[4];
-
+		} else if (Object.prototype.toString.call( obj ) === '[object Array]') {
+			if (obj[0] === 0) {
+				switch(obj[1]) {
+					case 'ws': //wallet snapshot
+						for (var i = 0; i < obj[2].length; i++){
+							if (obj[2][i][1] === 'BTC') {
+								bfx.bal.btc = obj[2][i][2];
+								console.log(getDateTime() + ' [Bitfinex] Initial BTC balance: ' + bfx.bal.btc);
+							}
+							if (obj[2][i][1] === 'YYW') {
+								bfx.bal.yyw = obj[2][i][2];
+								console.log(getDateTime() + ' [Bitfinex] Initial YYW balance: ' + bfx.bal.yyw);
+							}
+						}
+						break;
+					case 'wu': //wallet update
+						if (obj[2][1] === 'BTC') {
+							bfx.bal.btc = obj[2][1];
+							console.log(getDateTime() + ' [Bitfinex] BTC balance: ' + bfx.bal.btc);
+						}
+						if (obj[2][1] === 'YYW') {
+							bfx.bal.yyw = obj[2][1];
+							console.log(getDateTime() + ' [Bitfinex] YYW balance: ' + bfx.bal.yyw);
+						}
+						break;
+					case 'hb': //heartbeat
+						console.log('hb');
+						isAlive = true;
+						break;
+					default:
+						console.log(obj);
+				}
+			}
 		}
 	});
-
-	timeoutObj = setInterval(function(){
-		if (!isAlive){
-			console.log(getDateTime() + ' [Bitfinex] Ping-pong test failed');
-			reconnect_bf();
-		}
-		isAlive = false;
-		ws.send(JSON.stringify({
-		   "event":"ping",
-		}));
-	}, 3000);
-	
 	
     ws.onclose = function(){
-		reconnect_bf();
+		reconnect_bfx();
 		console.log(getDateTime() + ' Bitfinex socket closed.');
     };
 	
 	ws.onerror = function(){
-		reconnect_bf();
+		reconnect_bfx();
 		console.log(getDateTime() + ' Bitfinex error occured.');
     };
 	
-	function reconnect_bf(){
+	function reconnect_bfx(){
 		if (handled++ == 0){
 			clearTimeout(timeoutObj);
 			setTimeout(function(){
 				console.log(getDateTime() + ' Bitfinex websocket reconnecting.');
 				ws.close();
-				start_bf();
+				start_bfx();
 			}, 1000);
 		}
 	}
