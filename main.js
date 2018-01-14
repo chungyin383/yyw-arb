@@ -50,6 +50,13 @@ function start_bfx(){
 
 		ws.send(JSON.stringify(payload));
 		
+		// subscribe
+		ws.send(JSON.stringify({
+		   "event":"subscribe",
+		   "channel":"ticker",
+		   "pair":"YYWBTC"
+		}));
+		
 	}
 	
     ws.on('message', function(msg) {
