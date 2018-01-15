@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const crypto = require('crypto-js');
+const keys = require('./key');
 
 var data = {
 	target: 0.01,
@@ -31,14 +32,14 @@ function start_bfx(){
 	ws.onopen = () => {
 		
 		// API keys setup here (See "Authenticated Channels")
-		const apiKey = ''
-		const apiSecret = ''
+		const apiKey = keys.apiKey;
+		const apiSecret = keys.apiSecret;
 
-		const authNonce = Date.now() * 1000
-		const authPayload = 'AUTH' + authNonce
+		const authNonce = Date.now() * 1000;
+		const authPayload = 'AUTH' + authNonce;
 		const authSig = crypto
 			.HmacSHA384(authPayload, apiSecret)
-			.toString(crypto.enc.Hex)
+			.toString(crypto.enc.Hex);
 
 		const payload = {
 		  apiKey,
