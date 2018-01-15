@@ -2,16 +2,13 @@ const WebSocket = require('ws');
 const crypto = require('crypto-js');
 const keys = require('./key');
 const binance = require('node-binance-api');
-const BFX = require('bitfinex-api-node');
-const bfxRest = new BFX({apiKey: keys.bfxKey, apiSecret:keys.bfxSecret}).rest;
 
 var data = {
 	target: 0.01,
 	bfx: {
 		bal: {btc: 0, yyw:0},
-		bid: {p:0, q:0},
-		ask: {p:0, q:0},
-		arb: {p:0, q:0},
+		mybid: {p:0, q:0, id:0},
+		myask: {p:0, q:0, id:0},
 		comm: 0.002,
 		minyyw: 48
 	},
@@ -19,7 +16,8 @@ var data = {
 		bal: {btc: 0, yyw:0},
 		bid: {p:0, q:0},
 		ask: {p:0, q:0},
-		arb: {p:0, q:0},
+		mybid: {p:0, q:0},
+		myask: {p:0, q:0},
 		comm: 0.001,
 		minbtc: 0.002
 	}
@@ -27,14 +25,14 @@ var data = {
 
 function start_bfx(){
 	
-    var ws = new WebSocket('wss://api.bitfinex.com/ws/');
+    var ws = new WebSocket('wss://api.bitfinex.com/ws/2');
 	var handled = 0;
 	var isAlive = true;
 	var timeoutObj;
 	
 	ws.onopen = () => {
 		
-		// API keys setup here (See "Authenticated Channels")
+		// https://docs.bitfinex.com/v2/docs/ws-auth
 		const apiKey = keys.bfxKey;
 		const apiSecret = keys.bfxSecret;
 
@@ -61,13 +59,23 @@ function start_bfx(){
 			}
 			isAlive = false;
 		}, 10000);
-		bfx_place_order(0.00001, 100, 'buy');
+		
+		setTimeout(function(){bfx_place_order(0.00001, 100)}, 5000);
+		setTimeout(function(){bfx_cancel_order(data.bfx.mybid.id)}, 10000);
 	}
 	
     ws.on('message', function(msg) {
+		isAlive = true; // no need to handle heartbeat, every message means alive
 		obj = JSON.parse(msg);
 		if (Object.prototype.toString.call( obj ) === '[object Object]'){
 			switch(obj.event) {
+				case "auth":
+					if (obj.status === 'OK'){
+						console.log(getDateTime() + ' [Bitfinex] Authentication OK');
+					} else {
+						console.log(getDateTime() + ' [Bitfinex] Authentication NOT OK');
+					}
+					break;
 				case "info": 
 					if (typeof obj.version !== 'undefined'){
 						console.log(getDateTime() + ' [Bitfinex] Version: ' + obj.version);
@@ -77,10 +85,6 @@ function start_bfx(){
 					break;
 				case "subscribed": 
 					console.log(getDateTime() + ' [Bitfinex] subscribed to YYW tickers');
-					break;
-				case "pong": 
-					console.log('pong');
-					isAlive = true;
 					break;
 				case 'error':
 					console.log(getDateTime() + ' [Bitfinex] ERROR: ' + obj.code + ' ' + obj.obj);
@@ -113,9 +117,28 @@ function start_bfx(){
 							console.log(getDateTime() + ' [Bitfinex] YYW balance: ' + data.bfx.bal.yyw);
 						}
 						break;
-					case 'hb': //heartbeat
-						console.log('hb');
-						isAlive = true;
+					case 'os': //order snapshot
+						if (obj[2].length == 0) {
+							console.log(getDateTime() + ' [Bitfinex] No open orders');
+						} else {
+							console.log(getDateTime() + ' [Bitfinex] Shit there are ' + obj[2].length + ' open orders!');
+						}
+						break;
+					case 'on': //new order
+						if (obj[2][6] > 0) {
+							console.log(getDateTime() + ' [Bitfinex] Buy order placed for ' + data.bfx.mybid.q + 'YYW @' + data.bfx.mybid.p);
+							data.bfx.mybid.id = obj[2][0];
+						} else {
+							console.log(getDateTime() + ' [Bitfinex] Sell order placed for ' + data.bfx.myask.q + 'YYW @' + data.bfx.myask.p);
+							data.bfx.myask.id = obj[2][0];
+						}
+						break;
+					case 'oc': //cancel order
+						if (obj[2][6] > 0) {
+							console.log(getDateTime() + ' [Bitfinex] Buy order cancelled');
+						} else {
+							console.log(getDateTime() + ' [Bitfinex] Sell order cancelled');
+						}
 						break;
 					default:
 						console.log(obj);
@@ -145,13 +168,34 @@ function start_bfx(){
 		}
 	}
 	
-}
-
-function bfx_place_order(p, q, buySell){
-	bfxRest.new_order('YYWBTC', q, p, 'bitfinex', buySell, 'exchange limit', (err, res) => {
-		if (err) console.log(err);
-		console.log(result);
-	});
+	bfx_place_order = function(p, q){
+		const payload = [
+			0,
+			"on", // new order
+			null,
+			{
+				"cid": q > 0 ? 1 : 2,
+				"type": 'EXCHANGE LIMIT',
+				"symbol": 'tYYWBTC',
+				"amount": q.toString(),
+				"price": p.toString()
+			}
+		]
+		ws.send(JSON.stringify(payload));
+	}
+	
+	bfx_cancel_order = function(id){
+		const payload = [
+			0,
+			"oc",
+			null,
+			{
+				"id": id
+			}
+		]
+		ws.send(JSON.stringify(payload));
+	}
+	
 }
 
 binance.options({
@@ -191,5 +235,4 @@ function getDateTime() {
 }
 
 start_bfx();
-bfx_place_order(0.00001, 10, 'buy');
 //var timerPrintObj = setInterval(printAll, 10000);
