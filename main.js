@@ -1,6 +1,9 @@
 const WebSocket = require('ws');
 const crypto = require('crypto-js');
 const keys = require('./key');
+const binance = require('node-binance-api');
+const BFX = require('bitfinex-api-node');
+const bfxRest = new BFX({apiKey: keys.bfxKey, apiSecret:keys.bfxSecret}).rest;
 
 var data = {
 	target: 0.01,
@@ -32,8 +35,8 @@ function start_bfx(){
 	ws.onopen = () => {
 		
 		// API keys setup here (See "Authenticated Channels")
-		const apiKey = keys.apiKey;
-		const apiSecret = keys.apiSecret;
+		const apiKey = keys.bfxKey;
+		const apiSecret = keys.bfxSecret;
 
 		const authNonce = Date.now() * 1000;
 		const authPayload = 'AUTH' + authNonce;
@@ -42,11 +45,11 @@ function start_bfx(){
 			.toString(crypto.enc.Hex);
 
 		const payload = {
-		  apiKey,
-		  authSig,
-		  authNonce,
-		  authPayload,
-		  event: 'auth'
+			apiKey,
+			authSig,
+			authNonce,
+			authPayload,
+			event: 'auth'
 		}
 
 		ws.send(JSON.stringify(payload));
@@ -58,7 +61,7 @@ function start_bfx(){
 			}
 			isAlive = false;
 		}, 10000);
-		
+		bfx_place_order(0.00001, 100, 'buy');
 	}
 	
     ws.on('message', function(msg) {
@@ -81,8 +84,6 @@ function start_bfx(){
 					break;
 				case 'error':
 					console.log(getDateTime() + ' [Bitfinex] ERROR: ' + obj.code + ' ' + obj.obj);
-					shit = true;
-					reconnect_bfx();
 					break;
 				default:
 					console.log(obj);
@@ -93,23 +94,23 @@ function start_bfx(){
 					case 'ws': //wallet snapshot
 						for (var i = 0; i < obj[2].length; i++){
 							if (obj[2][i][1] === 'BTC') {
-								bfx.bal.btc = obj[2][i][2];
-								console.log(getDateTime() + ' [Bitfinex] Initial BTC balance: ' + bfx.bal.btc);
+								data.bfx.bal.btc = obj[2][i][2];
+								console.log(getDateTime() + ' [Bitfinex] Initial BTC balance: ' + data.bfx.bal.btc);
 							}
 							if (obj[2][i][1] === 'YYW') {
-								bfx.bal.yyw = obj[2][i][2];
-								console.log(getDateTime() + ' [Bitfinex] Initial YYW balance: ' + bfx.bal.yyw);
+								data.bfx.bal.yyw = obj[2][i][2];
+								console.log(getDateTime() + ' [Bitfinex] Initial YYW balance: ' + data.bfx.bal.yyw);
 							}
 						}
 						break;
 					case 'wu': //wallet update
 						if (obj[2][1] === 'BTC') {
-							bfx.bal.btc = obj[2][1];
-							console.log(getDateTime() + ' [Bitfinex] BTC balance: ' + bfx.bal.btc);
+							data.bfx.bal.btc = obj[2][1];
+							console.log(getDateTime() + ' [Bitfinex] BTC balance: ' + data.bfx.bal.btc);
 						}
 						if (obj[2][1] === 'YYW') {
-							bfx.bal.yyw = obj[2][1];
-							console.log(getDateTime() + ' [Bitfinex] YYW balance: ' + bfx.bal.yyw);
+							data.bfx.bal.yyw = obj[2][1];
+							console.log(getDateTime() + ' [Bitfinex] YYW balance: ' + data.bfx.bal.yyw);
 						}
 						break;
 					case 'hb': //heartbeat
@@ -119,25 +120,25 @@ function start_bfx(){
 					default:
 						console.log(obj);
 				}
-			}
+			} 
 		}
 	});
 	
     ws.onclose = function(){
 		reconnect_bfx();
-		console.log(getDateTime() + ' Bitfinex socket closed.');
+		console.log(getDateTime() + ' [Bitfinex] Socket closed.');
     };
 	
 	ws.onerror = function(){
 		reconnect_bfx();
-		console.log(getDateTime() + ' Bitfinex error occured.');
+		console.log(getDateTime() + ' [Bitfinex] Error occured.');
     };
 	
 	function reconnect_bfx(){
 		if (handled++ == 0){
 			clearTimeout(timeoutObj);
 			setTimeout(function(){
-				console.log(getDateTime() + ' Bitfinex websocket reconnecting.');
+				console.log(getDateTime() + ' [Bitfinex] Websocket reconnecting.');
 				ws.close();
 				start_bfx();
 			}, 1000);
@@ -145,6 +146,19 @@ function start_bfx(){
 	}
 	
 }
+
+function bfx_place_order(p, q, buySell){
+	bfxRest.new_order('YYWBTC', q, p, 'bitfinex', buySell, 'exchange limit', (err, res) => {
+		if (err) console.log(err);
+		console.log(result);
+	});
+}
+
+binance.options({
+	'APIKEY' : keys.bnbKey,
+	'APISECRET' : keys.bnbSecret
+});
+
 
 function printAll(){
 	//process.stdout.write('\033c');
@@ -177,4 +191,5 @@ function getDateTime() {
 }
 
 start_bfx();
+bfx_place_order(0.00001, 10, 'buy');
 //var timerPrintObj = setInterval(printAll, 10000);
